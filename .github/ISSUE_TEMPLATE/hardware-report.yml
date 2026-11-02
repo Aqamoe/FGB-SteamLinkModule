@@ -1,0 +1,49 @@
+name: 真机验收报告
+description: 提交 Steam Link 模块的实际设备验收结果
+title: "[验证] "
+labels: ["verification"]
+body:
+  - type: input
+    id: headset
+    attributes:
+      label: 头显型号与系统
+      description: 例如 Meta Quest 3 / v62、Quest Pro
+    validations:
+      required: true
+  - type: input
+    id: app
+    attributes:
+      label: Steam Link 版本（头显端与 PC 端）
+    validations:
+      required: true
+  - type: input
+    id: host
+    attributes:
+      label: FaceGaze Bridge 版本
+    validations:
+      required: true
+  - type: input
+    id: module
+    attributes:
+      label: 模块版本（Release tag）
+    validations:
+      required: true
+  - type: dropdown
+    id: result
+    attributes:
+      label: 结果
+      options:
+        - 全部正常
+        - 部分形状不对
+        - 注视方向不对/符号反了
+        - 连不上
+        - 崩溃
+    validations:
+      required: true
+  - type: textarea
+    id: detail
+    attributes:
+      label: 现象描述
+      description: 哪些表情不动、注视点坐标系是否吻合、bundle 是否有丢包、模块卡片显示什么
+    validations:
+      required: true

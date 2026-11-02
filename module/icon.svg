@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Steam Link">
+  <title>Steam Link</title>
+  <desc>头显轮廓与注视射线，透明背景，单色在中性灰度下对深色与浅色主题都可读。</desc>
+  <g fill="none" stroke="#8C97AC" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M22 52 h84 a10 10 0 0 1 10 10 v14 a10 10 0 0 1 -10 10 h-30 l-12 10 -12 -10 h-30 a10 10 0 0 1 -10 -10 v-14 a10 10 0 0 1 10 -10 z" />
+    <path d="M18 52 l6 -16 h20" />
+    <path d="M110 52 l-6 -16 h-20" />
+    <circle cx="48" cy="71" r="7" />
+    <circle cx="80" cy="71" r="7" />
+    <path d="M48 71 l-10 -4" />
+    <path d="M80 71 l-10 -4" />
+    <path d="M64 71 v-34" stroke-dasharray="2 8" />
+    <circle cx="64" cy="28" r="6" />
+  </g>
+</svg>
