@@ -74,29 +74,37 @@ public:
             const std::string_view text{reinterpret_cast<const char*>(datagram.data.data()),
                                         datagram.data.size()};
             std::string error;
-            if (steamlink::MergeDatagram(text, state_, stats_, error)) {
+            if (steamlink::MergeDatagram(text, state_, stats_, now_ns, error)) {
                 merged = true;
             } else {
                 host.WarnThrottled(warn_ns_, now_ns, kWarnIntervalNs, "丢弃一包 OSC：" + error);
             }
         }
 
-        if (stats_.unknown != reported_unknown_) {
+        if (stats_.unknown != reported_unknown_ &&
+            (unknown_warn_ns_ == 0 || now_ns - unknown_warn_ns_ >= kWarnIntervalNs)) {
+            unknown_warn_ns_ = now_ns;
             reported_unknown_ = stats_.unknown;
-            host.Warn("Steam Link 上报了 " + std::to_string(stats_.unknown) +
-                      " 条无法识别的 OSC 地址（已忽略）：" + stats_.first_unknown);
+            host.Warn("Steam Link 累计忽略 " + std::to_string(stats_.unknown) +
+                      " 条无法识别的 OSC 消息，首个地址：" + stats_.first_unknown);
         }
-        if (stats_.malformed != reported_malformed_) {
+        if (stats_.malformed != reported_malformed_ &&
+            (malformed_warn_ns_ == 0 || now_ns - malformed_warn_ns_ >= kWarnIntervalNs)) {
+            malformed_warn_ns_ = now_ns;
             reported_malformed_ = stats_.malformed;
-            host.Warn("Steam Link 有 " + std::to_string(stats_.malformed) +
+            host.Warn("Steam Link 累计 " + std::to_string(stats_.malformed) +
                       " 条消息参数缺失或类型不对，相关数据按无效处理");
         }
 
-        if (!staleness_.Check(host, endpoint_.LastPacketNs(), now_ns) || !merged) {
+        // 收包线程的时间戳可能比本帧 now_ns 晚几微秒（同一 steady_clock 的
+        // 线程竞态），取较大值，避免 Kit 里 (now - last) 的无符号下溢。
+        const std::uint64_t last_packet_ns = endpoint_.LastPacketNs();
+        const std::uint64_t sample_ns = last_packet_ns > now_ns ? last_packet_ns : now_ns;
+        if (!staleness_.Check(host, last_packet_ns, sample_ns) || !merged) {
             return false;
         }
 
-        steamlink::WriteFrame(state_, table_, &slot);
+        steamlink::WriteFrame(state_, table_, &slot, now_ns);
         return true;
     }
 
@@ -113,6 +121,8 @@ private:
     fgb::kit::Staleness staleness_{kNoDataTimeoutNs, "Steam Link"};
     std::uint16_t port_ = kDefaultPort;
     std::uint64_t warn_ns_ = 0;
+    std::uint64_t unknown_warn_ns_ = 0;
+    std::uint64_t malformed_warn_ns_ = 0;
     std::size_t reported_unknown_ = 0;
     std::size_t reported_malformed_ = 0;
 };

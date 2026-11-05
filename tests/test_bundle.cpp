@@ -16,6 +16,16 @@ using steamlink::Stats;
 
 namespace {
 
+constexpr std::uint64_t kNow = 1'000'000'000ull;
+
+bool Merge(const std::string& packet, FrameState& state, Stats& stats, std::string& error) {
+    return steamlink::MergeDatagram(packet, state, stats, kNow, error);
+}
+
+void Write(const FrameState& state, const ShapeTable& table, FgbFrameSlot* slot) {
+    steamlink::WriteFrame(state, table, slot, kNow);
+}
+
 FgbFrameSlot FreshSlot() {
     FgbFrameSlot slot{};
     slot.struct_size = sizeof(FgbFrameSlot);
@@ -39,7 +49,7 @@ int main() {
         Stats stats{};
         std::string error;
         const std::string packet = oscfx::MessageFloats("/sl/xrfb/facew/JawDrop", {0.5f});
-        CHECK(steamlink::MergeDatagram(packet, state, stats, error));
+        CHECK(Merge(packet, state, stats, error));
         CHECK_EQ(stats.messages, static_cast<std::size_t>(1));
         CHECK_NEAR(state.shapes[steamlink::ShapeSlot("JawOpen")], 0.5f, 1e-6);
     }
@@ -55,7 +65,7 @@ int main() {
             oscfx::MessageFloats("/sl/xrfb/facew/EyesClosedR", {0.6f}),
             oscfx::MessageFloats("/sl/eyeTrackedGazePoint", {0.1f, -0.2f, -0.97f}),
         });
-        CHECK(steamlink::MergeDatagram(packet, state, stats, error));
+        CHECK(Merge(packet, state, stats, error));
         CHECK_EQ(stats.messages, static_cast<std::size_t>(4));
         CHECK_EQ(stats.mapped, static_cast<std::size_t>(4));
         CHECK_NEAR(state.shapes[steamlink::ShapeSlot("LipPuckerUpperLeft")], 0.25f, 1e-6);
@@ -80,9 +90,9 @@ int main() {
         });
         const std::string third = oscfx::MessageFloats("/sl/xrfb/facew/MouthLeft", {0.2f});
 
-        CHECK(steamlink::MergeDatagram(first, state, stats, error));
-        CHECK(steamlink::MergeDatagram(second, state, stats, error));
-        CHECK(steamlink::MergeDatagram(third, state, stats, error));
+        CHECK(Merge(first, state, stats, error));
+        CHECK(Merge(second, state, stats, error));
+        CHECK(Merge(third, state, stats, error));
 
         CHECK_EQ(stats.messages, static_cast<std::size_t>(6));
         CHECK_EQ(stats.known_ignored, static_cast<std::size_t>(1));
@@ -90,7 +100,7 @@ int main() {
 
         // 三个数据报的数据必须汇在同一帧里
         FgbFrameSlot slot = FreshSlot();
-        steamlink::WriteFrame(state, table, &slot);
+        Write(state, table, &slot);
         CHECK((slot.attributes & FGB_ATTR_EXPRESSION) != 0);
         CHECK_NEAR(slot.shapes[host_mock.IndexOf("EyeWideLeft")], 0.5, 1e-6);
         CHECK_NEAR(slot.shapes[host_mock.IndexOf("JawOpen")], 0.3, 1e-6);
@@ -106,12 +116,12 @@ int main() {
         FrameState state{};
         Stats stats{};
         std::string error;
-        CHECK(steamlink::MergeDatagram(oscfx::Bundle({oscfx::MessageFloats(
-                                            "/sl/xrfb/facew/JawDrop", {0.4f})}),
-                                       state, stats, error));
-        CHECK(steamlink::MergeDatagram(oscfx::Bundle({oscfx::MessageFloats(
-                                            "/sl/xrfb/facew/JawDrop", {0.8f})}),
-                                       state, stats, error));
+        CHECK(Merge(
+            oscfx::Bundle({oscfx::MessageFloats("/sl/xrfb/facew/JawDrop", {0.4f})}), state,
+            stats, error));
+        CHECK(Merge(
+            oscfx::Bundle({oscfx::MessageFloats("/sl/xrfb/facew/JawDrop", {0.8f})}), state,
+            stats, error));
         CHECK_NEAR(state.shapes[steamlink::ShapeSlot("JawOpen")], 0.8f, 1e-6);
     }
 
@@ -124,16 +134,16 @@ int main() {
             oscfx::Bundle({oscfx::MessageFloats("/sl/xrfb/facew/JawDrop", {0.5f})});
 
         std::string truncated = good.substr(0, good.size() - 3);  // 砍掉尾部参数
-        CHECK(!steamlink::MergeDatagram(truncated, state, stats, error));
+        CHECK(!Merge(truncated, state, stats, error));
         CHECK(!error.empty());
 
         std::string short_header = good.substr(0, 12);  // bundle 头都不完整
-        CHECK(!steamlink::MergeDatagram(short_header, state, stats, error));
+        CHECK(!Merge(short_header, state, stats, error));
 
         const std::string garbage = std::string("this is not osc!!");
-        CHECK(!steamlink::MergeDatagram(garbage, state, stats, error));
+        CHECK(!Merge(garbage, state, stats, error));
 
-        CHECK(!steamlink::MergeDatagram("", state, stats, error));
+        CHECK(!Merge("", state, stats, error));
 
         // 丢弃后状态保持原样
         CHECK_NEAR(state.shapes[steamlink::ShapeSlot("JawOpen")], 0.0f, 1e-6);
@@ -149,7 +159,7 @@ int main() {
         oscfx::PutInt(payload, 1);  // 'i' 类型：1 → 1.0f
         const std::string packet =
             oscfx::MessageRaw("/sl/xrfb/facew/JawDrop", "i", payload);
-        CHECK(steamlink::MergeDatagram(packet, state, stats, error));
+        CHECK(Merge(packet, state, stats, error));
         CHECK_NEAR(state.shapes[steamlink::ShapeSlot("JawOpen")], 1.0f, 1e-6);
     }
 

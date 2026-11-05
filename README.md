@@ -2,7 +2,7 @@
 
 [![build](https://github.com/Aqamoe/FGB-SteamLinkModule/actions/workflows/ci.yml/badge.svg)](https://github.com/Aqamoe/FGB-SteamLinkModule/actions/workflows/ci.yml)
 
-**状态：0.1.0，未验证（untested）**。协议解析、映射与 ABI 生命周期有单元测试和合成 OSC
+**状态：0.1.1，未验证（untested）**。协议解析、映射与 ABI 生命周期有单元测试和合成 OSC
 端到端冒烟；真机（Steam Link + Meta Quest 眼动/面捕）验收待补，见 [docs/verification.md](docs/verification.md)。
 Valve 未公开该协议，本模块按社区逆向结果实现，版本更新可能失效。
 
@@ -20,13 +20,15 @@ injection, no admin rights.
 ## 功能 / Features
 
 - **注视**：`/sl/eyeTrackedGazePoint` 的 3D 注视点归一化成 HMD 局部单位向量
-  （-Z 前），逐眼 + 合并通道共用这条融合射线；点不可用时**不置方向位，绝不伪造**。
+  （-Z 前），逐眼 + 合并通道共用这条融合射线；点不可用或超过 500ms 未更新时
+  **不置方向位，绝不伪造或沿用旧方向**。
 - **睁眼度**：`EyesClosedL/R` + `LidTightener*`，沿用上游公式
   `1 - clamp(closed + closed*squint)`。
 - **表情**：56 条 `/sl/xrfb/facew/*`（Quest FaceBlend 口径）→ Unified Expressions，
-  与上游 VRCFT 模块同一张映射表。
+  与上游 VRCFT 模块同一张映射表；Valve 拼错的 `ToungeTipInterdental` 与正确拼写
+  `TongueTipInterdental` 都接受（UE 无对应形状，只接收不驱动）。
 - **bundle 重组**：每个 UDP 数据报独立解析，跨包按地址累积最新值；
-  未知地址、参数缺失、NaN/越界都有计数与日志。
+  未知地址、参数缺失、NaN/越界都有计数，日志最多每 5 秒汇总一次，不会刷屏。
 - **断连可恢复**：10 秒没有数据时在模块卡片提示原因，数据恢复后自动回到活跃。
 
 ## 不提供 / Not provided
@@ -50,7 +52,7 @@ injection, no admin rights.
 
 ## 安装
 
-1. 从 Releases 下载 `steamlink-0.1.0.zip`。
+1. 从 Releases 下载 `steamlink-0.1.1.zip`。
 2. FaceGaze Bridge →「模块库 → 原生模块 → 安装原生模块 (.zip)」，或「模块」页「从 .zip 安装」。
 3. 「模块」页把 **Steam Link** 设为启动，角色按需要分配 `gaze`（注视）与 `expression`（表情）。
 4. 重启引擎；头显里 Steam Link 开启 OSC 后模块卡片应显示活跃。
@@ -88,7 +90,7 @@ cmake -S . -B build -A x64 -DFGB_KIT_DIR="../FGB-Module-Kit"
 cmake --build build --config Release --target package-modules   # build/Release/steamlink-<版本>.zip
 ctest --test-dir build -C Release --output-on-failure           # 协议与映射单测
 cmake --build build --config Release --target smoke-test        # 真实 ABI + 合成 OSC 冒烟（需 9015 空闲）
-node ../FGB-Module-Kit/tools/audit.mjs --module --dir . --tag v0.1.0
+node ../FGB-Module-Kit/tools/audit.mjs --module --dir . --tag v0.1.1
 ```
 
 ## 目录结构

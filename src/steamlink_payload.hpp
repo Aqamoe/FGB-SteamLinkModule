@@ -30,7 +30,8 @@ struct FrameState {
     std::array<float, kShapeSlots> shapes{};
     float eye_closed[2] = {0.0f, 0.0f};  // [0]=左 [1]=右，EyesClosedL/R
     float gaze_point[3] = {0.0f, 0.0f, 0.0f};
-    bool gaze_valid = false;  // 最近一次注视点消息可用（参数齐全且有限）
+    std::uint64_t gaze_ns = 0;  // 最近一次注视点消息的宿主时刻
+    bool gaze_valid = false;    // 最近一次注视点消息可用（参数齐全且有限）
 
     void Reset() { *this = FrameState{}; }
 };
@@ -46,19 +47,23 @@ struct Stats {
 
 // 解析一个 UDP 数据报（单消息或 #bundle，允许多条消息）并合并进 state。
 // 返回 false 表示整个数据报非法（调用方丢弃并记日志），此时 state 不变。
-bool MergeDatagram(std::string_view packet, FrameState& state, Stats& stats, std::string& error);
+// now_ns 用于给注视点打时效，超过 500ms 没有新注视消息就停止输出方向。
+bool MergeDatagram(std::string_view packet, FrameState& state, Stats& stats,
+                   std::uint64_t now_ns, std::string& error);
 
 // 一条 OSC 消息 → 状态更新。单独暴露给测试，便于逐地址验证。
-void MergeMessage(const fgb::kit::OscMessage& message, FrameState& state, Stats& stats);
+void MergeMessage(const fgb::kit::OscMessage& message, FrameState& state, Stats& stats,
+                  std::uint64_t now_ns);
 
 // 登记本模块会写的全部 Unified Expressions 目标名。
 void DeclareTargets(fgb::kit::ShapeTable& table);
 
 // 写表情 + 睁眼度 + 注视方向，并置上对应的 attributes 位。
-// 注视点不可用（没收到 /sl/eyeTrackedGazePoint、参数不足或含 NaN/Inf/零向量）
-// 时不置任何方向位——绝不伪造 (0,0,-1)。上游没有 2D 注视点，本模块也
-// 从不置 LEFT/RIGHT_POINT 或 POINT_VIEWPORT。
-void WriteFrame(const FrameState& state, const fgb::kit::ShapeTable& table, FgbFrameSlot* slot);
+// 注视点不可用（没收到 /sl/eyeTrackedGazePoint、参数不足、含 NaN/Inf/零向量，
+// 或距上次有效注视超过 500ms）时不置任何方向位——绝不伪造或沿用旧方向。
+// 上游没有 2D 注视点，本模块也从不置 LEFT/RIGHT_POINT 或 POINT_VIEWPORT。
+void WriteFrame(const FrameState& state, const fgb::kit::ShapeTable& table, FgbFrameSlot* slot,
+                std::uint64_t now_ns);
 
 // 查目标名在 kUnifiedExpressionNames 中的下标；未收录返回 kShapeSlots。
 std::size_t ShapeSlot(std::string_view name);

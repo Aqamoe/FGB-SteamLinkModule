@@ -33,13 +33,21 @@ constexpr std::string_view kPrefixFaceC = "/sl/xrfb/facec/";
 constexpr std::string_view kPrefixAvatarParams = "/avatar/parameters/";
 constexpr std::string_view kPrefixTrackingEye = "/tracking/eye/";
 
+// 注视点超过这个时间没有更新就失效：头显关掉「分享眼动数据」而面捕继续时，
+// 不能继续输出最后一次方向。
+constexpr std::uint64_t kGazeTimeoutNs = 500ull * 1000ull * 1000ull;
+
 // 面捕里带眼球方向的 faceblend 项（EyesLook*）不使用：注视以眼动追踪的
 // /sl/eyeTrackedGazePoint 为准，两者同时输出会互相打架。
+// TongueTipInterdental 在 Unified Expressions 里没有对应形状，Valve 实际发的是
+// 拼错的 /sl/xrfb/facew/ToungeTipInterdental；两种拼写都当已知地址接受，
+// 避免拼写修正或保留哪个版本时变成未知地址告警。
 constexpr std::string_view kIgnoredFacew[] = {
-    "/sl/xrfb/facew/EyesLookDownL",  "/sl/xrfb/facew/EyesLookDownR",
-    "/sl/xrfb/facew/EyesLookLeftL",  "/sl/xrfb/facew/EyesLookLeftR",
-    "/sl/xrfb/facew/EyesLookRightL", "/sl/xrfb/facew/EyesLookRightR",
-    "/sl/xrfb/facew/EyesLookUpL",    "/sl/xrfb/facew/EyesLookUpR",
+    "/sl/xrfb/facew/EyesLookDownL",        "/sl/xrfb/facew/EyesLookDownR",
+    "/sl/xrfb/facew/EyesLookLeftL",        "/sl/xrfb/facew/EyesLookLeftR",
+    "/sl/xrfb/facew/EyesLookRightL",       "/sl/xrfb/facew/EyesLookRightR",
+    "/sl/xrfb/facew/EyesLookUpL",          "/sl/xrfb/facew/EyesLookUpR",
+    "/sl/xrfb/facew/ToungeTipInterdental", "/sl/xrfb/facew/TongueTipInterdental",
 };
 
 // clang-format off
@@ -108,12 +116,14 @@ bool Numeric(const OscArgument& argument) {
            argument.type == fgb::kit::OscType::Double;
 }
 
-void MergeGazePoint(const OscMessage& message, FrameState& state, Stats& stats) {
+void MergeGazePoint(const OscMessage& message, FrameState& state, Stats& stats,
+                    std::uint64_t now_ns) {
     if (message.arguments.size() < 3 || !Numeric(message.arguments[0]) ||
         !Numeric(message.arguments[1]) || !Numeric(message.arguments[2])) {
         // 参数不齐 / 类型不对：把注视判为不可用，而不是保留旧值冒充新数据。
         ++stats.malformed;
         state.gaze_valid = false;
+        state.gaze_ns = 0;
         return;
     }
     const float x = message.arguments[0].AsFloat(0.0f);
@@ -122,6 +132,7 @@ void MergeGazePoint(const OscMessage& message, FrameState& state, Stats& stats) 
     state.gaze_point[0] = x;
     state.gaze_point[1] = y;
     state.gaze_point[2] = z;
+    state.gaze_ns = now_ns;
     state.gaze_valid = std::isfinite(x) && std::isfinite(y) && std::isfinite(z);
     ++stats.mapped;
 }
@@ -166,11 +177,12 @@ std::size_t ShapeSlot(std::string_view name) {
     return kShapeSlots;
 }
 
-void MergeMessage(const OscMessage& message, FrameState& state, Stats& stats) {
+void MergeMessage(const OscMessage& message, FrameState& state, Stats& stats,
+                  std::uint64_t now_ns) {
     ++stats.messages;
     const std::string_view address{message.address};
     if (address == kGazePointAddress) {
-        MergeGazePoint(message, state, stats);
+        MergeGazePoint(message, state, stats, now_ns);
         return;
     }
     if (address == kEyesClosedLeft || address == kEyesClosedRight) {
@@ -206,13 +218,14 @@ void MergeMessage(const OscMessage& message, FrameState& state, Stats& stats) {
     }
 }
 
-bool MergeDatagram(std::string_view packet, FrameState& state, Stats& stats, std::string& error) {
+bool MergeDatagram(std::string_view packet, FrameState& state, Stats& stats,
+                   std::uint64_t now_ns, std::string& error) {
     const auto messages = fgb::kit::OscReader::Parse(packet, error);
     if (!messages.has_value()) {
         return false;
     }
     for (const auto& message : *messages) {
-        MergeMessage(message, state, stats);
+        MergeMessage(message, state, stats, now_ns);
     }
     return true;
 }
@@ -237,7 +250,8 @@ float Openness(float closed, float squint) {
 
 } // namespace
 
-void WriteFrame(const FrameState& state, const fgb::kit::ShapeTable& table, FgbFrameSlot* slot) {
+void WriteFrame(const FrameState& state, const fgb::kit::ShapeTable& table, FgbFrameSlot* slot,
+                std::uint64_t now_ns) {
     slot->attributes |= FGB_ATTR_EXPRESSION;
     for (std::size_t i = 0; i < kShapeSlots; ++i) {
         const float value = state.shapes[i];
@@ -260,8 +274,12 @@ void WriteFrame(const FrameState& state, const fgb::kit::ShapeTable& table, FgbF
     slot->right_eye.openness_confidence = 1.0f;
 
     // 注视：3D 点归一化成 HMD 局部单位向量（-Z 前）。点不可用（缺消息、
-    // 参数不足、NaN/Inf、零向量）时一个方向位都不置——绝不伪造 (0,0,-1)。
+    // 参数不足、NaN/Inf、零向量、超过 500ms 未更新）时一个方向位都不置——
+    // 绝不伪造或沿用旧方向。
     if (!state.gaze_valid) {
+        return;
+    }
+    if (now_ns < state.gaze_ns || now_ns - state.gaze_ns > kGazeTimeoutNs) {
         return;
     }
     const float gx = state.gaze_point[0];

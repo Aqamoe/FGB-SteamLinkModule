@@ -2,7 +2,15 @@
 
 遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与语义化版本。
 
-## [未发布]
+## [0.1.1] - 未发布
+### 修复
+- 兼容 Valve 的舌部地址拼写：`/sl/xrfb/facew/ToungeTipInterdental`（真机实际发送）与
+  正确拼写 `/sl/xrfb/facew/TongueTipInterdental` 都按已知地址接受，不再计入未知地址。
+  两者在 Unified Expressions 中没有对应形状，不驱动表情。
+- 未知地址 / 参数异常告警改为每 5 秒最多一条累计日志，避免高频数据把 engine.log 撑爆。
+- 断流检测取本帧时刻与最后收包时刻的较大值，修复「已 18446744073 秒没有数据」的
+  无符号下溢，避免误报并避免丢弃刚收到的有效帧。
+- 注视方向距上次有效消息超过 500ms 即失效，头显关闭眼动分享后不再沿用旧方向。
 
 ## [0.1.0] - 未发布
 ### 新增

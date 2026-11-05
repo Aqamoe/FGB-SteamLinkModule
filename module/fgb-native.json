@@ -2,7 +2,7 @@
   "ModuleId": "com.fgbbridge.steamlink",
   "ModuleName": "Steam Link",
   "AuthorName": "Aqamoe (光水)",
-  "Version": "0.1.0",
+  "Version": "0.1.1",
   "ModuleDescription": "接收本机 Steam Link 客户端转发的 OSC（UDP 9015，支持 bundle 分包重组），输出眼动注视方向、睁眼度与 Unified Expressions 面捕表情。不需要 VRCFT，不注入进程。",
   "UsageInstructions": "1. Quest 头显里运行 Steam Link 串流 PC，并在设置中开启「高级设置」，打开「启用 OSC」「分享眼动数据…」「分享面捕数据…」，OSC 输出端口设为 9015（本机 127.0.0.1）。2. 关闭 VRCFaceTracking（其 SteamLink 模块会抢占 9015 端口），也不要运行其它 OSC 接收端。3. 在「模块」页把 Steam Link 设为启动并重启引擎，模块卡片应显示活跃。注意：Valve 未公开该 OSC 协议，本模块按社区逆向结果实现，属社区未验证（untested）状态，头显固件/Steam Link 版本更新可能改变数据格式。",
   "ModulePageUrl": "https://github.com/Aqamoe/FGB-SteamLinkModule",

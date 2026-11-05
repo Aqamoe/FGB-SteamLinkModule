@@ -37,8 +37,9 @@
 **没有 2D 屏幕注视点**。上游协议里不存在逐眼 2D 坐标，因此本模块从不置
 `FGB_ATTR_LEFT/RIGHT_POINT`，也**绝不**置 `FGB_ATTR_POINT_VIEWPORT`（ADR-0033 的
 「已标定到该眼显示视口」条件无从确认）。方向来自 3D 注视射线，属真实眼动数据；
-当注视消息缺失、参数不足 3 个、含 NaN/Inf 或为零向量时，本模块**不置任何方向位**，
-绝不伪造 `(0,0,-1)`。
+当注视消息缺失、参数不足 3 个、含 NaN/Inf、为零向量，或**距上次有效注视超过
+500ms** 时，本模块**不置任何方向位**，绝不伪造 `(0,0,-1)`、也不沿用旧方向。
+500ms 是为了在头显关闭「分享眼动数据」而面捕仍在发送时及时失效。
 
 ### 面捕（头显里开启 “Share Face tracking data”）
 
@@ -83,11 +84,17 @@
 | CheekRaiserL/R | CheekSquintLeft/Right |
 | NoseWrinklerL/R | NoseSneerLeft/Right |
 | TongueRetreat / TongueTipAlveolar / TongueOut | TongueBendDown / TongueCurlUp / TongueOut |
+| ToungeTipInterdental / TongueTipInterdental | **不映射**（UE 88 形状里没有对应项），两种拼写都按已知地址接受 |
 | EyesLookDown/Left/Right/Up × L/R | **不使用**（注视以 `/sl/eyeTrackedGazePoint` 为准），忽略并计数 |
 
-上游字典还提到可能存在的 `TongueTipInterdental`、`FrontDorsalPalate`、
-`MidDorsalPalate`、`BackDorsalVelar`（注释掉，未映射到 UE）。【未确认是否真的发送；
-本模块计入未知地址】
+真机日志确认 Valve 实际发送的是拼错的 `/sl/xrfb/facew/ToungeTipInterdental`
+（`Tounge`，不是 `Tongue`）。本模块同时接受正确拼写 `TongueTipInterdental`，
+两种都不会计入未知地址；Valve 以后修掉拼写或继续保留都能工作。该系数在 Unified
+Expressions 里没有对应形状，因此只接收、不驱动表情。
+
+上游字典还提到可能存在的 `FrontDorsalPalate`、`MidDorsalPalate`、
+`BackDorsalVelar`（注释掉，未映射到 UE）。【未确认是否真的发送；若发送会计入未知地址，
+日志每 5 秒最多提示一次】
 
 上游模块还有两处自标 “?? fix some weird ft things need to check” 的后处理：
 `MouthUpperDeepen* = max(0, MouthUpperUp* − NoseSneer*)` 与
